@@ -1,5 +1,65 @@
 # 📊 Eclesiar Economic Dashboard
 
+منصة ويب متكاملة لمتابعة وتحليل الاقتصاد داخل لعبة **Eclesiar** — لعبة MMO استراتيجية اجتماعية تقوم على السياسة والاقتصاد والحرب.
+
+---
+
+## 🏗️ هيكل المشروع
+
+```
+eclesiar-economic-dashboard/
+├── src/                          # Frontend (React + Vite)
+│   ├── components/               # المكونات المشتركة
+│   ├── pages/                    # الصفحات
+│   ├── lib/                      # مكتبات الاتصال
+│   │   ├── supabase.ts          # إعداد Supabase
+│   │   └── database.ts          # دوال قاعدة البيانات
+│   ├── data/                     # بيانات احتياطية
+│   └── App.tsx                   # المكون الرئيسي
+├── server/                       # Backend (Node.js + Express)
+│   ├── index.js                 # الملف الرئيسي للسيرفر
+│   ├── package.json             # تبعيات السيرفر
+│   ├── .env.example             # مثال ملف البيئة
+│   ├── supabase-schema.sql      # كود قاعدة البيانات
+│   └── README.md                # دليل السيرفر
+├── package.json                  # تبعيات المشروع
+└── README.md                     # هذا الملف
+```
+
+---
+
+## 🚀 التشغيل السريع
+
+### Frontend
+
+```bash
+# تثبيت التبعيات
+npm install
+
+# تشغيل المشروع
+npm run dev
+
+# بناء المشروع
+npm run build
+```
+
+### Backend
+
+```bash
+cd server
+
+# تثبيت التبعيات
+npm install
+
+# نسخ ملف البيئة
+cp .env.example .env
+
+# تشغيل السيرفر
+npm run dev
+```
+
+---
+
 ## 🔗 ربط المشروع بـ Supabase
 
 تم ربط المشروع بقاعدة بيانات Supabase بنجاح! المشروع الآن يستخدم Supabase كقاعدة بيانات رئيسية مع fallback تلقائي للبيانات المحلية في حال عدم الاتصال.
