@@ -9,6 +9,7 @@ import {
   LogOut,
   Menu,
   X,
+  Database,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -17,7 +18,7 @@ interface LayoutProps {
 }
 
 export default function Layout({ children }: LayoutProps) {
-  const { isAdmin, logout } = useAuth();
+  const { isAdmin, user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -33,6 +34,10 @@ export default function Layout({ children }: LayoutProps) {
     logout();
     navigate('/');
   };
+
+  const userInitials = (user?.username || 'U').substring(0, 2).toUpperCase();
+  const countryName = user?.country?.name || 'Unknown';
+  const countryFlag = user?.country?.flag || '🌍';
 
   return (
     <div className="flex min-h-screen bg-dark-bg">
@@ -87,15 +92,24 @@ export default function Layout({ children }: LayoutProps) {
             })}
           </nav>
 
+          {/* DB Connection Status */}
+          <div className="px-4 py-2">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-dark-bg border border-dark-border">
+              <Database size={12} className="text-secondary" />
+              <span className="text-dark-muted text-xs">Supabase متصل</span>
+              <div className="w-2 h-2 rounded-full bg-secondary animate-pulse mr-auto" />
+            </div>
+          </div>
+
           {/* User section */}
           <div className="p-4 border-t border-dark-border">
             <div className="flex items-center gap-3 px-4 py-3">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
-                <span className="text-white text-sm font-bold">DS</span>
+                <span className="text-white text-sm font-bold">{userInitials}</span>
               </div>
               <div className="flex-1">
-                <p className="text-white text-sm font-medium">DragonSlayer</p>
-                <p className="text-dark-muted text-xs">🏔️ Nordia</p>
+                <p className="text-white text-sm font-medium">{user?.username || 'User'}</p>
+                <p className="text-dark-muted text-xs">{countryFlag} {countryName}</p>
               </div>
               <button
                 onClick={handleLogout}
@@ -122,10 +136,10 @@ export default function Layout({ children }: LayoutProps) {
           <div className="flex items-center gap-4 ml-auto">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/20 border border-secondary/30">
               <div className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
-              <span className="text-secondary text-xs font-medium">متصل</span>
+              <span className="text-secondary text-xs font-medium">Supabase</span>
             </div>
             <div className="text-dark-muted text-sm">
-              آخر تحديث: <span className="text-white">منذ 2 دقيقة</span>
+              ID: <span className="text-white font-mono">{user?.game_id || '---'}</span>
             </div>
           </div>
         </header>

@@ -1,8 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Activity, Target, AlertTriangle, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import {
-  LineChart,
-  Line,
   AreaChart,
   Area,
   XAxis,
@@ -10,67 +8,58 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from 'recharts';
-import { resources, resourcePriceHistory } from '../data/mockData';
+import { fetchResources, fetchResourcePriceHistory } from '../lib/database';
+import type { DBResource } from '../lib/database';
 
 export default function Analysis() {
+  const [resources, setResources] = useState<DBResource[]>([]);
   const [selectedResource, setSelectedResource] = useState('Iron Ore');
-  const priceData = resourcePriceHistory[selectedResource] || [];
+  const [priceData, setPriceData] = useState<{ date: string; price: number }[]>([]);
 
-  const trends = [
-    { resource: 'Oil', trend: 'up', strength: 'strong', prediction: 'متوقع ارتفاع 8-12% خلال الأسبوع', icon: '🛢️' },
-    { resource: 'Iron Ore', trend: 'up', strength: 'moderate', prediction: 'ارتفاع طفيف متوقع 2-4%', icon: '⛏️' },
-    { resource: 'Gold', trend: 'down', strength: 'moderate', prediction: 'انخفاض متوقع بسبب زيادة العرض', icon: '🥇' },
-    { resource: 'Coal', trend: 'down', strength: 'strong', prediction: 'هبوط حاد - تجنب الشراء الآن', icon: 'ite' },
-    { resource: 'Diamond', trend: 'up', strength: 'strong', prediction: 'طلب مرتفع - فرصة استثمارية', icon: '💎' },
-    { resource: 'Food', trend: 'stable', strength: 'weak', prediction: 'استقرار متوقع - لا تغيير كبير', icon: '🌾' },
-  ];
+  useEffect(() => {
+    loadResources();
+  }, []);
 
-  const opportunities = [
-    {
-      type: 'buy',
-      resource: 'Diamond',
-      reason: 'الطلب أعلى من العرض بنسبة 50%',
-      potential: '+15-20%',
-      urgency: 'high',
-    },
-    {
-      type: 'buy',
-      resource: 'Oil',
-      reason: 'اتجاه صعودي قوي + نقص في المعروض',
-      potential: '+8-12%',
-      urgency: 'medium',
-    },
-    {
-      type: 'sell',
-      resource: 'Coal',
-      reason: 'فائض في العرض + اتجاه هبوطي',
-      potential: '-10-15%',
-      urgency: 'high',
-    },
-    {
-      type: 'sell',
-      resource: 'Gold',
-      reason: 'زيادة العرض المتوقعة خلال أيام',
-      potential: '-5-8%',
-      urgency: 'low',
-    },
-  ];
+  useEffect(() => {
+    loadPriceHistory();
+  }, [selectedResource]);
 
-  const cheapestMarkets = [
-    { resource: 'Iron Ore', country: 'Verdania', price: 42.1, avgPrice: 45.2, saving: '6.9%' },
-    { resource: 'Wood', country: 'Verdania', price: 10.5, avgPrice: 12.8, saving: '18.0%' },
-    { resource: 'Food', country: 'Aqualis', price: 7.2, avgPrice: 8.4, saving: '14.3%' },
-    { resource: 'Oil', country: 'Ignara', price: 148.0, avgPrice: 156.7, saving: '5.6%' },
-  ];
+  const loadResources = async () => {
+    const r = await fetchResources();
+    setResources(r);
+    if (r.length > 0 && !r.find(res => res.name === selectedResource)) {
+      setSelectedResource(r[0].name);
+    }
+  };
 
-  const expensiveMarkets = [
-    { resource: 'Gold', country: 'Terranova', price: 920.0, avgPrice: 892.5, premium: '3.1%' },
-    { resource: 'Diamond', country: 'Solaria', price: 2450.0, avgPrice: 2340.0, premium: '4.7%' },
-    { resource: 'Silver', country: 'Ignara', price: 248.0, avgPrice: 234.6, premium: '5.7%' },
-    { resource: 'Iron Ore', country: 'Solaria', price: 48.5, avgPrice: 45.2, premium: '7.3%' },
-  ];
+  const loadPriceHistory = async () => {
+    const data = await fetchResourcePriceHistory(selectedResource);
+    setPriceData(data);
+  };
+
+  // Generate trends based on resource data
+  const trends = resources.map(r => ({
+    resource: r.name,
+    trend: r.change_24h > 1 ? 'up' : r.change_24h < -1 ? 'down' : 'stable',
+    strength: Math.abs(r.change_24h) > 3 ? 'strong' : Math.abs(r.change_24h) > 1 ? 'moderate' : 'weak',
+    prediction: r.change_24h > 3 ? 'ارتفاع قوي متوقع' :
+                r.change_24h > 1 ? 'ارتفاع طفيف متوقع' :
+                r.change_24h < -3 ? 'هبوط حاد - تجنب الشراء' :
+                r.change_24h < -1 ? 'انخفاض متوقع' :
+                'استقرار متوقع',
+    icon: r.icon || '📊',
+  }));
+
+  const opportunities = resources
+    .filter(r => Math.abs(r.change_24h) > 1)
+    .map(r => ({
+      type: r.change_24h > 0 ? 'buy' as const : 'sell' as const,
+      resource: r.name,
+      reason: r.change_24h > 0 ? `اتجاه صعودي (${r.change_24h}%)` : `اتجاه هبوطي (${r.change_24h}%)`,
+      potential: r.change_24h > 0 ? `+${Math.min(r.change_24h * 2, 20).toFixed(0)}-${Math.min(r.change_24h * 3, 30).toFixed(0)}%` : `${Math.max(r.change_24h * 2, -20).toFixed(0)}-${Math.max(r.change_24h * 3, -30).toFixed(0)}%`,
+      urgency: Math.abs(r.change_24h) > 3 ? 'high' as const : Math.abs(r.change_24h) > 2 ? 'medium' as const : 'low' as const,
+    }));
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -80,19 +69,19 @@ export default function Analysis() {
           <Activity size={28} className="text-primary-light" />
           التحليل والتنبؤات
         </h1>
-        <p className="text-dark-muted mt-1">تحليل اتجاهات الأسعار والفرص الاقتصادية</p>
+        <p className="text-dark-muted mt-1">تحليل اتجاهات الأسعار والفرص الاقتصادية بناءً على بيانات Supabase</p>
       </div>
 
       {/* Trend Indicators */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
         {trends.map((trend, i) => (
-          <div key={i} className="glass rounded-xl p-4 text-center hover:border-primary/30 transition-all">
-            <span className="text-2xl mb-2 block">{trend.icon}</span>
-            <p className="text-white text-sm font-medium">{trend.resource}</p>
-            <div className={`flex items-center justify-center gap-1 mt-2 text-xs font-medium ${
+          <div key={i} className="glass rounded-xl p-3 text-center hover:border-primary/30 transition-all">
+            <span className="text-xl mb-1 block">{trend.icon}</span>
+            <p className="text-white text-xs font-medium truncate">{trend.resource}</p>
+            <div className={`flex items-center justify-center gap-1 mt-1 text-xs font-medium ${
               trend.trend === 'up' ? 'text-secondary' : trend.trend === 'down' ? 'text-danger' : 'text-accent'
             }`}>
-              {trend.trend === 'up' ? <ArrowUpRight size={14} /> : trend.trend === 'down' ? <ArrowDownRight size={14} /> : <span>→</span>}
+              {trend.trend === 'up' ? <ArrowUpRight size={12} /> : trend.trend === 'down' ? <ArrowDownRight size={12} /> : <span>→</span>}
               {trend.trend === 'up' ? 'صاعد' : trend.trend === 'down' ? 'هابط' : 'مستقر'}
             </div>
           </div>
@@ -107,39 +96,49 @@ export default function Analysis() {
             تتبع الأسعار عبر الوقت
           </h3>
           <div className="flex flex-wrap gap-2">
-            {Object.keys(resourcePriceHistory).map((resource) => (
+            {resources.slice(0, 8).map((resource) => (
               <button
-                key={resource}
-                onClick={() => setSelectedResource(resource)}
+                key={resource.id}
+                onClick={() => setSelectedResource(resource.name)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                  selectedResource === resource
+                  selectedResource === resource.name
                     ? 'bg-primary text-white'
                     : 'bg-dark-bg border border-dark-border text-dark-muted hover:text-white hover:border-primary/30'
                 }`}
               >
-                {resource}
+                {resource.name}
               </button>
             ))}
           </div>
         </div>
-        <ResponsiveContainer width="100%" height={300}>
-          <AreaChart data={priceData}>
-            <defs>
-              <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-            <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} />
-            <YAxis stroke="#94a3b8" fontSize={12} />
-            <Tooltip
-              contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
-              labelStyle={{ color: '#e2e8f0' }}
-            />
-            <Area type="monotone" dataKey="price" stroke="#6366f1" fill="url(#priceGradient)" strokeWidth={2} name="السعر" />
-          </AreaChart>
-        </ResponsiveContainer>
+        {priceData.length > 0 ? (
+          <ResponsiveContainer width="100%" height={300}>
+            <AreaChart data={priceData}>
+              <defs>
+                <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+              <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} />
+              <YAxis stroke="#94a3b8" fontSize={12} />
+              <Tooltip
+                contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                labelStyle={{ color: '#e2e8f0' }}
+              />
+              <Area type="monotone" dataKey="price" stroke="#6366f1" fill="url(#priceGradient)" strokeWidth={2} name="السعر" />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="h-[300px] flex items-center justify-center text-dark-muted">
+            <div className="text-center">
+              <Activity size={40} className="mx-auto mb-3 opacity-50" />
+              <p>لا توجد بيانات تاريخية لهذا المورد</p>
+              <p className="text-xs mt-1">أضف بيانات في جدول resource_price_history</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Predictions & Opportunities */}
@@ -151,7 +150,7 @@ export default function Analysis() {
             التنبؤات
           </h3>
           <div className="space-y-3">
-            {trends.map((trend, i) => (
+            {trends.slice(0, 6).map((trend, i) => (
               <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-dark-bg/50 border border-dark-border/50">
                 <span className="text-xl">{trend.icon}</span>
                 <div className="flex-1">
@@ -179,7 +178,7 @@ export default function Analysis() {
             فرص استثمارية
           </h3>
           <div className="space-y-3">
-            {opportunities.map((opp, i) => (
+            {opportunities.length > 0 ? opportunities.slice(0, 6).map((opp, i) => (
               <div key={i} className={`p-3 rounded-lg border ${
                 opp.type === 'buy' ? 'bg-secondary/5 border-secondary/20' : 'bg-danger/5 border-danger/20'
               }`}>
@@ -208,60 +207,12 @@ export default function Analysis() {
                   </span>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Market Comparison */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* Cheapest Markets */}
-        <div className="glass rounded-xl p-6">
-          <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-            <TrendingDown size={18} className="text-secondary" />
-            أرخص الأسواق
-          </h3>
-          <div className="space-y-3">
-            {cheapestMarkets.map((market, i) => (
-              <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-dark-bg/50 border border-dark-border/50">
-                <div>
-                  <p className="text-white text-sm font-medium">{market.resource}</p>
-                  <p className="text-dark-muted text-xs">{market.country}</p>
-                </div>
-                <div className="text-left">
-                  <p className="text-secondary text-sm font-mono">{market.price}</p>
-                  <p className="text-dark-muted text-xs">متوسط: {market.avgPrice}</p>
-                </div>
-                <span className="text-secondary text-xs font-bold bg-secondary/10 px-2 py-1 rounded">
-                  -{market.saving}
-                </span>
+            )) : (
+              <div className="text-center py-8 text-dark-muted">
+                <Target size={32} className="mx-auto mb-2 opacity-50" />
+                <p className="text-sm">لا توجد فرص حاليًا</p>
               </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Most Expensive Markets */}
-        <div className="glass rounded-xl p-6">
-          <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-            <TrendingUp size={18} className="text-danger" />
-            أغلى الأسواق
-          </h3>
-          <div className="space-y-3">
-            {expensiveMarkets.map((market, i) => (
-              <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-dark-bg/50 border border-dark-border/50">
-                <div>
-                  <p className="text-white text-sm font-medium">{market.resource}</p>
-                  <p className="text-dark-muted text-xs">{market.country}</p>
-                </div>
-                <div className="text-left">
-                  <p className="text-danger text-sm font-mono">{market.price}</p>
-                  <p className="text-dark-muted text-xs">متوسط: {market.avgPrice}</p>
-                </div>
-                <span className="text-danger text-xs font-bold bg-danger/10 px-2 py-1 rounded">
-                  +{market.premium}
-                </span>
-              </div>
-            ))}
+            )}
           </div>
         </div>
       </div>

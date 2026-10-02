@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -7,10 +8,10 @@ import {
   ShoppingBag,
   Coins,
   BarChart3,
+  Database,
+  RefreshCw,
 } from 'lucide-react';
 import {
-  LineChart,
-  Line,
   AreaChart,
   Area,
   BarChart,
@@ -24,12 +25,77 @@ import {
   Pie,
   Cell,
 } from 'recharts';
-import { countries, resources, marketOffers, jobs, treasuryHistory, revenueData, taxBreakdown } from '../data/mockData';
+import { fetchCountries, fetchResources, fetchMarketOffers, fetchJobs, fetchTreasuryHistory, fetchRevenueData, fetchTaxBreakdown } from '../lib/database';
+import type { DBCountry, DBResource, DBMarketOffer, DBJob, DBTreasuryHistory, DBRevenueData, DBTaxBreakdown } from '../lib/database';
 
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
 export default function Dashboard() {
-  const country = countries[0]; // Nordia - player's country
+  const [countries, setCountries] = useState<DBCountry[]>([]);
+  const [resources, setResources] = useState<DBResource[]>([]);
+  const [offers, setOffers] = useState<DBMarketOffer[]>([]);
+  const [jobs, setJobs] = useState<DBJob[]>([]);
+  const [treasuryHistory, setTreasuryHistory] = useState<DBTreasuryHistory[]>([]);
+  const [revenueData, setRevenueData] = useState<DBRevenueData[]>([]);
+  const [taxBreakdown, setTaxBreakdown] = useState<DBTaxBreakdown[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+
+  const country = countries[0]; // Player's country (Nordia)
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    const [c, r, o, j, t, rev, tax] = await Promise.all([
+      fetchCountries(),
+      fetchResources(),
+      fetchMarketOffers(),
+      fetchJobs(),
+      fetchTreasuryHistory(),
+      fetchRevenueData(),
+      fetchTaxBreakdown(),
+    ]);
+    setCountries(c);
+    setResources(r);
+    setOffers(o);
+    setJobs(j);
+    setTreasuryHistory(t);
+    setRevenueData(rev);
+    setTaxBreakdown(tax);
+    setLastUpdate(new Date());
+    setLoading(false);
+  };
+
+  // Transform treasury history for chart
+  const treasuryChartData = treasuryHistory.map(t => ({
+    date: t.recorded_at?.length > 10 ? new Date(t.recorded_at).toLocaleDateString('en', { month: 'short', day: 'numeric' }) : t.recorded_at,
+    price: t.amount,
+  }));
+
+  // Transform market offers for display
+  const displayOffers = offers.map(o => ({
+    ...o,
+    resource: o.resources?.name || 'Unknown',
+    country: o.countries?.name || 'Unknown',
+    timestamp: o.created_at ? timeAgo(new Date(o.created_at)) : 'just now',
+  }));
+
+  // Transform jobs for display
+  const displayJobs = jobs.map(j => ({
+    ...j,
+    country: j.countries?.name || 'Unknown',
+  }));
+
+  if (!country && !loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-dark-muted">لا توجد بيانات. تأكد من تشغيل SQL Schema في Supabase.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -37,16 +103,26 @@ export default function Dashboard() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-            <span className="text-3xl">{country.flag}</span>
-            اقتصاد {country.name}
+            <span className="text-3xl">{country?.flag || '🏔️'}</span>
+            اقتصاد {country?.name || 'Nordia'}
           </h1>
           <p className="text-dark-muted mt-1">نظرة شاملة على الوضع الاقتصادي لبلدك</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-dark-muted text-sm">العملة:</span>
-          <span className="px-3 py-1 rounded-full bg-primary/20 border border-primary/30 text-primary-light text-sm font-medium">
-            {country.currency}
-          </span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={loadData}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-card border border-dark-border text-dark-muted hover:text-white hover:border-primary/30 transition-all text-sm disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            تحديث
+          </button>
+          <div className="flex items-center gap-2">
+            <Database size={14} className="text-secondary" />
+            <span className="text-dark-muted text-xs">
+              آخر تحديث: {lastUpdate.toLocaleTimeString('ar')}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -55,7 +131,7 @@ export default function Dashboard() {
         {[
           {
             label: 'الخزينة',
-            value: `${(country.treasury / 1000000).toFixed(2)}M`,
+            value: country ? `${(country.treasury / 1000000).toFixed(2)}M` : '---',
             change: '+5.2%',
             positive: true,
             icon: DollarSign,
@@ -63,7 +139,7 @@ export default function Dashboard() {
           },
           {
             label: 'الناتج المحلي',
-            value: `${(country.gdp / 1000000).toFixed(1)}M`,
+            value: country ? `${(country.gdp / 1000000).toFixed(1)}M` : '---',
             change: '+3.8%',
             positive: true,
             icon: BarChart3,
@@ -71,7 +147,7 @@ export default function Dashboard() {
           },
           {
             label: 'عدد السكان',
-            value: country.population.toLocaleString(),
+            value: country ? country.population.toLocaleString() : '---',
             change: '+1.2%',
             positive: true,
             icon: Users,
@@ -79,7 +155,7 @@ export default function Dashboard() {
           },
           {
             label: 'معدل الضريبة',
-            value: `${country.taxRate}%`,
+            value: country ? `${country.tax_rate}%` : '---',
             change: '-0.5%',
             positive: false,
             icon: Coins,
@@ -111,7 +187,7 @@ export default function Dashboard() {
             تطور الخزينة
           </h3>
           <ResponsiveContainer width="100%" height={250}>
-            <AreaChart data={treasuryHistory}>
+            <AreaChart data={treasuryChartData}>
               <defs>
                 <linearGradient id="treasuryGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
@@ -124,7 +200,7 @@ export default function Dashboard() {
               <Tooltip
                 contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
                 labelStyle={{ color: '#e2e8f0' }}
-                formatter={(value: number) => [`${(value / 1000000).toFixed(2)}M ${country.currency}`, 'الخزينة']}
+                formatter={(value: number) => [`${(value / 1000000).toFixed(2)}M ${country?.currency || ''}`, 'الخزينة']}
               />
               <Area type="monotone" dataKey="price" stroke="#6366f1" fill="url(#treasuryGradient)" strokeWidth={2} />
             </AreaChart>
@@ -182,11 +258,11 @@ export default function Dashboard() {
                         <span className="text-white text-sm font-medium">{resource.name}</span>
                       </div>
                     </td>
-                    <td className="py-3 text-white text-sm font-mono">{resource.price.toFixed(1)}</td>
+                    <td className="py-3 text-white text-sm font-mono">{Number(resource.price).toFixed(1)}</td>
                     <td className="py-3">
-                      <span className={`flex items-center gap-1 text-sm font-medium ${resource.change24h >= 0 ? 'text-secondary' : 'text-danger'}`}>
-                        {resource.change24h >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                        {resource.change24h > 0 ? '+' : ''}{resource.change24h}%
+                      <span className={`flex items-center gap-1 text-sm font-medium ${resource.change_24h >= 0 ? 'text-secondary' : 'text-danger'}`}>
+                        {resource.change_24h >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                        {resource.change_24h > 0 ? '+' : ''}{Number(resource.change_24h).toFixed(1)}%
                       </span>
                     </td>
                     <td className="py-3 text-dark-muted text-sm">{resource.supply.toLocaleString()}</td>
@@ -204,27 +280,29 @@ export default function Dashboard() {
             <Coins size={18} className="text-primary-light" />
             توزيع الضرائب
           </h3>
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
-              <Pie
-                data={taxBreakdown}
-                cx="50%"
-                cy="50%"
-                innerRadius={50}
-                outerRadius={75}
-                dataKey="amount"
-                nameKey="category"
-              >
-                {taxBreakdown.map((_, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
-                formatter={(value: number) => [`${(value / 1000).toFixed(0)}K`, '']}
-              />
-            </PieChart>
-          </ResponsiveContainer>
+          {taxBreakdown.length > 0 && (
+            <ResponsiveContainer width="100%" height={180}>
+              <PieChart>
+                <Pie
+                  data={taxBreakdown}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={50}
+                  outerRadius={75}
+                  dataKey="amount"
+                  nameKey="category"
+                >
+                  {taxBreakdown.map((_, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                  formatter={(value: number) => [`${(value / 1000).toFixed(0)}K`, '']}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
           <div className="space-y-2 mt-2">
             {taxBreakdown.slice(0, 4).map((item, i) => (
               <div key={i} className="flex items-center justify-between">
@@ -232,7 +310,7 @@ export default function Dashboard() {
                   <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i] }} />
                   <span className="text-dark-muted text-xs">{item.category}</span>
                 </div>
-                <span className="text-white text-xs font-medium">{item.percentage}%</span>
+                <span className="text-white text-xs font-medium">{Number(item.percentage)}%</span>
               </div>
             ))}
           </div>
@@ -248,7 +326,7 @@ export default function Dashboard() {
             آخر عروض السوق
           </h3>
           <div className="space-y-3">
-            {marketOffers.slice(0, 5).map((offer) => (
+            {displayOffers.slice(0, 5).map((offer) => (
               <div key={offer.id} className="flex items-center justify-between p-3 rounded-lg bg-dark-bg/50 border border-dark-border/50 hover:border-primary/20 transition-all">
                 <div className="flex items-center gap-3">
                   <span className={`px-2 py-1 rounded text-xs font-bold ${offer.type === 'sell' ? 'bg-danger/20 text-danger' : 'bg-secondary/20 text-secondary'}`}>
@@ -260,7 +338,7 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className="text-left">
-                  <p className="text-white text-sm font-mono">{offer.price.toFixed(1)}</p>
+                  <p className="text-white text-sm font-mono">{Number(offer.price).toFixed(1)}</p>
                   <p className="text-dark-muted text-xs">×{offer.quantity}</p>
                 </div>
               </div>
@@ -275,11 +353,11 @@ export default function Dashboard() {
             سوق العمل
           </h3>
           <div className="space-y-3">
-            {jobs.slice(0, 5).map((job) => (
+            {displayJobs.slice(0, 5).map((job) => (
               <div key={job.id} className="p-3 rounded-lg bg-dark-bg/50 border border-dark-border/50 hover:border-primary/20 transition-all">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-white text-sm font-medium">{job.title}</p>
-                  <span className="text-secondary text-sm font-mono">{job.salary} {country.currency}/يوم</span>
+                  <span className="text-secondary text-sm font-mono">{job.salary} {country?.currency}/يوم</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <p className="text-dark-muted text-xs">{job.company}</p>
@@ -300,4 +378,15 @@ export default function Dashboard() {
       </div>
     </div>
   );
+}
+
+function timeAgo(date: Date): string {
+  const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+  if (seconds < 60) return 'الآن';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `منذ ${minutes} دقيقة`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `منذ ${hours} ساعة`;
+  const days = Math.floor(hours / 24);
+  return `منذ ${days} يوم`;
 }

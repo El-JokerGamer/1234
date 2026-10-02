@@ -1,4 +1,5 @@
-import { Globe, TrendingUp, TrendingDown, ArrowRight, DollarSign } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Globe, TrendingUp, TrendingDown, ArrowRight, DollarSign, RefreshCw } from 'lucide-react';
 import {
   BarChart,
   Bar,
@@ -7,52 +8,80 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
 } from 'recharts';
-import { countries, resources, marketOffers, jobs } from '../data/mockData';
+import { fetchCountries, fetchResources, fetchMarketOffers, fetchJobs } from '../lib/database';
+import type { DBCountry, DBResource, DBMarketOffer, DBJob } from '../lib/database';
 
 export default function GlobalEconomy() {
+  const [countries, setCountries] = useState<DBCountry[]>([]);
+  const [resources, setResources] = useState<DBResource[]>([]);
+  const [offers, setOffers] = useState<DBMarketOffer[]>([]);
+  const [jobs, setJobs] = useState<DBJob[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    const [c, r, o, j] = await Promise.all([
+      fetchCountries(),
+      fetchResources(),
+      fetchMarketOffers(),
+      fetchJobs(),
+    ]);
+    setCountries(c);
+    setResources(r);
+    setOffers(o);
+    setJobs(j);
+    setLoading(false);
+  };
+
   const countryComparison = countries.map((c) => ({
     name: c.name,
     flag: c.flag,
     treasury: c.treasury / 1000000,
     gdp: c.gdp / 1000000,
     population: c.population / 1000,
-    taxRate: c.taxRate,
+    taxRate: c.tax_rate,
   }));
 
-  const resourceComparison = resources.map((r) => ({
-    name: r.name,
-    price: r.price,
-    supply: r.supply / 1000,
-    demand: r.demand / 1000,
+  const displayOffers = offers.map(o => ({
+    ...o,
+    resource: o.resources?.name || 'Unknown',
+    country: o.countries?.name || 'Unknown',
   }));
 
-  const radarData = countries.map((c) => ({
-    country: c.name,
-    economy: (c.gdp / 14500000) * 100,
-    treasury: (c.treasury / 4100000) * 100,
-    population: (c.population / 18900) * 100,
+  const displayJobs = jobs.map(j => ({
+    ...j,
+    country: j.countries?.name || 'Unknown',
   }));
 
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-white flex items-center gap-3">
-          <Globe size={28} className="text-primary-light" />
-          الاقتصاد العالمي
-        </h1>
-        <p className="text-dark-muted mt-1">مقارنة اقتصادية بين جميع دول اللعبة</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white flex items-center gap-3">
+            <Globe size={28} className="text-primary-light" />
+            الاقتصاد العالمي
+          </h1>
+          <p className="text-dark-muted mt-1">مقارنة اقتصادية بين جميع دول اللعبة</p>
+        </div>
+        <button
+          onClick={loadData}
+          disabled={loading}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-card border border-dark-border text-dark-muted hover:text-white hover:border-primary/30 transition-all text-sm disabled:opacity-50"
+        >
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          تحديث
+        </button>
       </div>
 
       {/* Country Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {countries.map((country) => (
+        {countries.map((country, idx) => (
           <div key={country.id} className="glass rounded-xl p-5 hover:border-primary/30 transition-all group">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -63,7 +92,7 @@ export default function GlobalEconomy() {
                 </div>
               </div>
               <span className="text-dark-muted text-xs px-2 py-1 rounded bg-dark-bg border border-dark-border">
-                #{countries.indexOf(country) + 1}
+                #{idx + 1}
               </span>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -81,7 +110,7 @@ export default function GlobalEconomy() {
               </div>
               <div>
                 <p className="text-dark-muted text-xs">الضريبة</p>
-                <p className="text-white font-semibold text-sm">{country.taxRate}%</p>
+                <p className="text-white font-semibold text-sm">{country.tax_rate}%</p>
               </div>
             </div>
             <div className="mt-3 pt-3 border-t border-dark-border">
@@ -170,11 +199,11 @@ export default function GlobalEconomy() {
                         <span className="text-white text-sm font-medium">{resource.name}</span>
                       </div>
                     </td>
-                    <td className="py-3 text-white text-sm font-mono">{resource.price.toFixed(1)}</td>
+                    <td className="py-3 text-white text-sm font-mono">{Number(resource.price).toFixed(1)}</td>
                     <td className="py-3">
-                      <span className={`flex items-center gap-1 text-sm font-medium ${resource.change24h >= 0 ? 'text-secondary' : 'text-danger'}`}>
-                        {resource.change24h >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                        {resource.change24h > 0 ? '+' : ''}{resource.change24h}%
+                      <span className={`flex items-center gap-1 text-sm font-medium ${resource.change_24h >= 0 ? 'text-secondary' : 'text-danger'}`}>
+                        {resource.change_24h >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                        {resource.change_24h > 0 ? '+' : ''}{Number(resource.change_24h).toFixed(1)}%
                       </span>
                     </td>
                     <td className="py-3 text-dark-muted text-sm">{(resource.supply / 1000).toFixed(1)}K</td>
@@ -208,7 +237,7 @@ export default function GlobalEconomy() {
             عروض العمل العالمية
           </h3>
           <div className="space-y-3">
-            {jobs.map((job) => (
+            {displayJobs.map((job) => (
               <div key={job.id} className="flex items-center justify-between p-3 rounded-lg bg-dark-bg/50 border border-dark-border/50">
                 <div>
                   <p className="text-white text-sm font-medium">{job.title}</p>
@@ -229,7 +258,7 @@ export default function GlobalEconomy() {
             آخر العروض العالمية
           </h3>
           <div className="space-y-3">
-            {marketOffers.map((offer) => (
+            {displayOffers.map((offer) => (
               <div key={offer.id} className="flex items-center justify-between p-3 rounded-lg bg-dark-bg/50 border border-dark-border/50">
                 <div className="flex items-center gap-3">
                   <span className={`px-2 py-1 rounded text-xs font-bold ${offer.type === 'sell' ? 'bg-danger/20 text-danger' : 'bg-secondary/20 text-secondary'}`}>
@@ -241,7 +270,7 @@ export default function GlobalEconomy() {
                   </div>
                 </div>
                 <div className="text-left">
-                  <p className="text-white text-sm font-mono">{offer.price.toFixed(1)}</p>
+                  <p className="text-white text-sm font-mono">{Number(offer.price).toFixed(1)}</p>
                   <p className="text-dark-muted text-xs">×{offer.quantity}</p>
                 </div>
               </div>

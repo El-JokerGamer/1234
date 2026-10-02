@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../App';
-import { Shield, Eye, EyeOff, Fingerprint } from 'lucide-react';
+import { login as dbLogin } from '../lib/database';
+import { Shield, Eye, EyeOff, Fingerprint, Database, WifiOff } from 'lucide-react';
 
 export default function Login() {
   const [gameId, setGameId] = useState('');
@@ -9,26 +10,36 @@ export default function Login() {
   const [showSerial, setShowSerial] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [dbStatus, setDbStatus] = useState<'checking' | 'connected' | 'offline'>('checking');
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    setTimeout(() => {
-      if (gameId === '10001' && serial === 'A3F8-B2C1-D4E5-F6A7') {
-        login('owner');
-        navigate('/dashboard');
-      } else if (gameId && serial) {
-        login('member');
+    if (!gameId || !serial) {
+      setError('يرجى إدخال جميع البيانات المطلوبة');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const result = await dbLogin(gameId, serial);
+      
+      if (result.success && result.user) {
+        setDbStatus('connected');
+        login(result.user);
         navigate('/dashboard');
       } else {
-        setError('يرجى إدخال جميع البيانات المطلوبة');
+        setError(result.error || 'بيانات الدخول غير صحيحة');
       }
-      setLoading(false);
-    }, 1000);
+    } catch {
+      setError('حدث خطأ غير متوقع');
+    }
+    
+    setLoading(false);
   };
 
   return (
@@ -49,6 +60,22 @@ export default function Login() {
         </div>
 
         <form onSubmit={handleSubmit} className="glass rounded-2xl p-8 space-y-6">
+          {/* DB Status Indicator */}
+          <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium ${
+            dbStatus === 'connected' ? 'bg-secondary/10 border border-secondary/30 text-secondary' :
+            dbStatus === 'offline' ? 'bg-accent/10 border border-accent/30 text-accent' :
+            'bg-dark-bg border border-dark-border text-dark-muted'
+          }`}>
+            {dbStatus === 'connected' ? <Database size={14} /> : 
+             dbStatus === 'offline' ? <WifiOff size={14} /> :
+             <div className="w-3 h-3 border border-dark-muted border-t-transparent rounded-full animate-spin" />}
+            <span>
+              {dbStatus === 'connected' ? 'Supabase متصل' :
+               dbStatus === 'offline' ? 'وضع محلي (Supabase غير متصل)' :
+               'جاري التحقق من الاتصال...'}
+            </span>
+          </div>
+
           {error && (
             <div className="bg-danger/10 border border-danger/30 rounded-lg p-3 text-danger text-sm text-center">
               {error}
@@ -125,6 +152,9 @@ export default function Login() {
         <div className="mt-6 text-center">
           <p className="text-dark-muted/50 text-xs">
             للدخول التجريبي: ID = 10001 | السيريال = A3F8-B2C1-D4E5-F6A7
+          </p>
+          <p className="text-dark-muted/40 text-xs mt-1">
+            (يعمل حتى بدون اتصال بـ Supabase)
           </p>
         </div>
       </div>

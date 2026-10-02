@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useState, createContext, useContext } from 'react';
+import { useState, createContext, useContext, useEffect } from 'react';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
@@ -8,17 +8,20 @@ import GlobalEconomy from './pages/GlobalEconomy';
 import Analysis from './pages/Analysis';
 import AdminPanel from './pages/AdminPanel';
 import Layout from './components/Layout';
+import { DBUser } from './lib/database';
 
 interface AuthContextType {
   isLoggedIn: boolean;
   isAdmin: boolean;
-  login: (role: 'owner' | 'member') => void;
+  user: DBUser | null;
+  login: (user: DBUser) => void;
   logout: () => void;
 }
 
 export const AuthContext = createContext<AuthContextType>({
   isLoggedIn: false,
   isAdmin: false,
+  user: null,
   login: () => {},
   logout: () => {},
 });
@@ -28,19 +31,39 @@ export const useAuth = () => useContext(AuthContext);
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [user, setUser] = useState<DBUser | null>(null);
 
-  const login = (role: 'owner' | 'member') => {
+  // Check for existing session on mount
+  useEffect(() => {
+    const savedUser = localStorage.getItem('eclesiar_user');
+    if (savedUser) {
+      try {
+        const parsed = JSON.parse(savedUser);
+        setUser(parsed);
+        setIsLoggedIn(true);
+        setIsAdmin(parsed.role === 'owner');
+      } catch {
+        localStorage.removeItem('eclesiar_user');
+      }
+    }
+  }, []);
+
+  const login = (userData: DBUser) => {
+    setUser(userData);
     setIsLoggedIn(true);
-    setIsAdmin(role === 'owner');
+    setIsAdmin(userData.role === 'owner');
+    localStorage.setItem('eclesiar_user', JSON.stringify(userData));
   };
 
   const logout = () => {
+    setUser(null);
     setIsLoggedIn(false);
     setIsAdmin(false);
+    localStorage.removeItem('eclesiar_user');
   };
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn, isAdmin, login, logout }}>
+    <AuthContext.Provider value={{ isLoggedIn, isAdmin, user, login, logout }}>
       <Router>
         <Routes>
           <Route path="/" element={<Landing />} />

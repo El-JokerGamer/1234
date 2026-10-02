@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Key, Copy, CheckCircle, AlertCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { signup as dbSignup } from '../lib/database';
+import { Key, Copy, CheckCircle, AlertCircle, Database } from 'lucide-react';
 
 export default function Signup() {
   const [gameId, setGameId] = useState('');
@@ -8,33 +9,30 @@ export default function Signup() {
   const [serial, setSerial] = useState('');
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [dbConnected, setDbConnected] = useState<boolean | null>(null);
 
-  const navigate = useNavigate();
-
-  const generateSerial = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    const segments = [];
-    for (let i = 0; i < 4; i++) {
-      let segment = '';
-      for (let j = 0; j < 4; j++) {
-        segment += chars[Math.floor(Math.random() * chars.length)];
-      }
-      segments.push(segment);
-    }
-    return segments.join('-');
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!gameId) return;
     setLoading(true);
+    setError('');
 
-    setTimeout(() => {
-      const newSerial = generateSerial();
-      setSerial(newSerial);
-      setStep('serial');
-      setLoading(false);
-    }, 1500);
+    try {
+      const result = await dbSignup(gameId);
+      
+      if (result.success && result.serial) {
+        setSerial(result.serial);
+        setStep('serial');
+        setDbConnected(true);
+      } else {
+        setError(result.error || 'حدث خطأ أثناء التسجيل');
+      }
+    } catch {
+      setError('حدث خطأ غير متوقع');
+    }
+    
+    setLoading(false);
   };
 
   const handleCopy = () => {
@@ -63,6 +61,18 @@ export default function Signup() {
         <div className="glass rounded-2xl p-8">
           {step === 'input' && (
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* DB Status */}
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-dark-bg border border-dark-border text-dark-muted text-xs">
+                <Database size={14} />
+                <span>البيانات محفوظة في Supabase</span>
+              </div>
+
+              {error && (
+                <div className="bg-danger/10 border border-danger/30 rounded-lg p-3 text-danger text-sm text-center">
+                  {error}
+                </div>
+              )}
+
               <div>
                 <label className="block text-dark-muted text-sm font-medium mb-2">
                   ID اللعبة
@@ -75,7 +85,7 @@ export default function Signup() {
                   className="w-full bg-dark-bg border border-dark-border rounded-lg px-4 py-3 text-white placeholder-dark-muted/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition-all"
                 />
                 <p className="text-dark-muted/70 text-xs mt-2">
-                  سيتم جلب بياناتك تلقائيًا من API اللعبة
+                  سيتم جلب بياناتك تلقائيًا من API اللعبة وإنشاء سيريال مربوط بجهازك
                 </p>
               </div>
 
@@ -87,7 +97,7 @@ export default function Signup() {
                 {loading ? (
                   <>
                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    جاري التحقق...
+                    جاري التسجيل...
                   </>
                 ) : (
                   'التالي'
@@ -104,6 +114,8 @@ export default function Signup() {
                 </div>
                 <h3 className="text-white font-semibold text-lg mb-2">تم إنشاء السيريال</h3>
                 <p className="text-dark-muted text-sm">
+                  {dbConnected ? 'تم حفظ حسابك في قاعدة البيانات.' : 'تم إنشاء حسابك محليًا.'}
+                  <br />
                   انسخ هذا السيريال وأرسله للأدمن لتفعيل حسابك
                 </p>
               </div>
@@ -151,7 +163,7 @@ export default function Signup() {
               <div>
                 <h3 className="text-white font-semibold text-lg mb-2">في انتظار التفعيل</h3>
                 <p className="text-dark-muted text-sm leading-relaxed">
-                  تم إرسال السيريال للأدمن. سيتم تفعيل حسابك في أقرب وقت.
+                  تم حفظ السيريال في قاعدة البيانات. سيتم تفعيل حسابك في أقرب وقت.
                   <br />
                   ستحصل على إشعار عند التفعيل.
                 </p>

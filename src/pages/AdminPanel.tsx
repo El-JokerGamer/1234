@@ -1,73 +1,106 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Shield,
   Users,
   UserCheck,
-  UserX,
   Ban,
   Trash2,
   Key,
   RefreshCw,
-  Eye,
   Search,
   Plus,
   Clock,
   Monitor,
+  Database,
+  RefreshCw as RefreshIcon,
 } from 'lucide-react';
-import { users as initialUsers } from '../data/mockData';
+import {
+  fetchAllUsers,
+  updateUserStatus,
+  deleteUser,
+  regenerateSerial,
+  createActivationCode,
+  fetchActivationCodes,
+  fetchSecurityLogs,
+} from '../lib/database';
+import type { DBUser, DBActivationCode, DBSecurityLog } from '../lib/database';
 
 type TabType = 'users' | 'activation' | 'security';
 
 export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState<TabType>('users');
-  const [userList, setUserList] = useState(initialUsers);
+  const [userList, setUserList] = useState<DBUser[]>([]);
+  const [activationCodes, setActivationCodes] = useState<DBActivationCode[]>([]);
+  const [securityLogs, setSecurityLogs] = useState<DBSecurityLog[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [showActivateModal, setShowActivateModal] = useState(false);
   const [activationCode, setActivationCode] = useState('');
   const [codeDuration, setCodeDuration] = useState('24');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadTabData();
+  }, [activeTab]);
+
+  const loadTabData = async () => {
+    setLoading(true);
+    if (activeTab === 'users') {
+      const users = await fetchAllUsers();
+      setUserList(users);
+    } else if (activeTab === 'activation') {
+      const codes = await fetchActivationCodes();
+      setActivationCodes(codes);
+    } else if (activeTab === 'security') {
+      const logs = await fetchSecurityLogs();
+      setSecurityLogs(logs);
+    }
+    setLoading(false);
+  };
 
   const filteredUsers = userList.filter(
     (u) =>
-      u.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.gameId.includes(searchQuery) ||
-      u.country.toLowerCase().includes(searchQuery.toLowerCase())
+      (u.username || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.game_id.includes(searchQuery) ||
+      (u.country?.name || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleStatusChange = (userId: number, newStatus: 'active' | 'pending' | 'banned') => {
-    setUserList((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, status: newStatus } : u))
-    );
-  };
-
-  const handleDelete = (userId: number) => {
-    setUserList((prev) => prev.filter((u) => u.id !== userId));
-  };
-
-  const handleRegenerateSerial = (userId: number) => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    const segments = [];
-    for (let i = 0; i < 4; i++) {
-      let segment = '';
-      for (let j = 0; j < 4; j++) {
-        segment += chars[Math.floor(Math.random() * chars.length)];
-      }
-      segments.push(segment);
+  const handleStatusChange = async (userId: number, newStatus: 'active' | 'pending' | 'banned') => {
+    const success = await updateUserStatus(userId, newStatus);
+    if (success) {
+      setUserList((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, status: newStatus } : u))
+      );
     }
-    const newSerial = segments.join('-');
-    setUserList((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, serial: newSerial } : u))
-    );
   };
 
-  const generateActivationCode = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = '';
-    for (let i = 0; i < 12; i++) {
-      if (i > 0 && i % 4 === 0) code += '-';
-      code += chars[Math.floor(Math.random() * chars.length)];
+  const handleDelete = async (userId: number) => {
+    if (!confirm('هل أنت متأكد من حذف هذا المستخدم؟')) return;
+    const success = await deleteUser(userId);
+    if (success) {
+      setUserList((prev) => prev.filter((u) => u.id !== userId));
     }
-    setActivationCode(code);
-    setShowActivateModal(true);
+  };
+
+  const handleRegenerateSerial = async (userId: number) => {
+    const newSerial = await regenerateSerial(userId);
+    if (newSerial) {
+      setUserList((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, serial: newSerial } : u))
+      );
+      alert(`تم تحديث السيريال: ${newSerial}`);
+    }
+  };
+
+  const handleGenerateCode = async () => {
+    const duration = codeDuration === 'unlimited' ? null : parseInt(codeDuration);
+    const code = await createActivationCode(duration);
+    if (code) {
+      setActivationCode(code);
+      setShowActivateModal(true);
+      // Reload codes
+      const codes = await fetchActivationCodes();
+      setActivationCodes(codes);
+    }
   };
 
   const tabs = [
@@ -94,7 +127,18 @@ export default function AdminPanel() {
           </h1>
           <p className="text-dark-muted mt-1">إدارة المستخدمين والأمان</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={loadTabData}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-card border border-dark-border text-dark-muted hover:text-white hover:border-primary/30 transition-all text-sm"
+          >
+            <RefreshIcon size={14} />
+            تحديث
+          </button>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-card border border-dark-border">
+            <Database size={14} className="text-secondary" />
+            <span className="text-secondary text-xs">Supabase متصل</span>
+          </div>
           <span className="px-3 py-1.5 rounded-full bg-primary/20 border border-primary/30 text-primary-light text-sm font-medium">
             👑 Owner
           </span>
@@ -180,19 +224,19 @@ export default function AdminPanel() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center">
-                          <span className="text-white text-xs font-bold">{user.username[0]}</span>
+                          <span className="text-white text-xs font-bold">{(user.username || 'U')[0]}</span>
                         </div>
                         <div>
-                          <p className="text-white text-sm font-medium">{user.username}</p>
+                          <p className="text-white text-sm font-medium">{user.username || 'Unknown'}</p>
                           <p className="text-dark-muted text-xs flex items-center gap-1">
                             <Monitor size={10} />
-                            {user.deviceFingerprint}
+                            {user.device_fingerprint || 'N/A'}
                           </p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-white text-sm font-mono">{user.gameId}</td>
-                    <td className="px-4 py-3 text-dark-muted text-sm">{user.country}</td>
+                    <td className="px-4 py-3 text-white text-sm font-mono">{user.game_id}</td>
+                    <td className="px-4 py-3 text-dark-muted text-sm">{user.country?.name || 'N/A'}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-1 rounded text-xs font-medium ${
                         user.status === 'active' ? 'bg-secondary/20 text-secondary' :
@@ -202,8 +246,10 @@ export default function AdminPanel() {
                         {user.status === 'active' ? 'نشط' : user.status === 'pending' ? 'انتظار' : 'محظور'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-dark-muted text-xs">{user.lastLogin}</td>
-                    <td className="px-4 py-3 text-dark-muted text-xs font-mono">{user.ip}</td>
+                    <td className="px-4 py-3 text-dark-muted text-xs">
+                      {user.last_login ? new Date(user.last_login).toLocaleString('ar') : 'لم يدخل بعد'}
+                    </td>
+                    <td className="px-4 py-3 text-dark-muted text-xs font-mono">{user.last_ip || 'N/A'}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1">
                         {user.status === 'pending' && (
@@ -253,6 +299,13 @@ export default function AdminPanel() {
                 ))}
               </tbody>
             </table>
+            {filteredUsers.length === 0 && !loading && (
+              <div className="text-center py-12 text-dark-muted">
+                <Users size={40} className="mx-auto mb-3 opacity-50" />
+                <p>لا يوجد مستخدمون</p>
+                <p className="text-xs mt-1">تأكد من تشغيل SQL Schema في Supabase</p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -282,7 +335,7 @@ export default function AdminPanel() {
                   </select>
                 </div>
                 <button
-                  onClick={generateActivationCode}
+                  onClick={handleGenerateCode}
                   className="flex items-center gap-2 bg-primary hover:bg-primary-dark text-white px-6 py-2.5 rounded-lg font-medium transition-all"
                 >
                   <Plus size={18} />
@@ -308,28 +361,33 @@ export default function AdminPanel() {
           {/* Generated codes history */}
           <div className="glass rounded-xl p-6">
             <h3 className="text-white font-semibold mb-4">سجل الأكواد</h3>
-            <div className="space-y-2">
-              {[
-                { code: 'AB3D-EF5G-H7J9-K2L4', duration: '24 ساعة', used: true, usedBy: 'FrostMage' },
-                { code: 'MN6P-QR8S-T0U2-V4W6', duration: 'دائم', used: false, usedBy: null },
-                { code: 'XY1Z-AB3C-DE5F-GH7I', duration: '3 أيام', used: true, usedBy: 'EarthShaker' },
-              ].map((item, i) => (
-                <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-dark-bg/50 border border-dark-border/50">
-                  <div className="flex items-center gap-3">
-                    <span className={`w-2 h-2 rounded-full ${item.used ? 'bg-dark-muted' : 'bg-secondary'}`} />
-                    <span className="text-white font-mono text-sm">{item.code}</span>
+            {activationCodes.length > 0 ? (
+              <div className="space-y-2">
+                {activationCodes.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-dark-bg/50 border border-dark-border/50">
+                    <div className="flex items-center gap-3">
+                      <span className={`w-2 h-2 rounded-full ${item.is_used ? 'bg-dark-muted' : 'bg-secondary'}`} />
+                      <span className="text-white font-mono text-sm">{item.code}</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-dark-muted text-xs">
+                        {item.is_unlimited ? 'دائم' : `${item.duration_hours} ساعة`}
+                      </span>
+                      {item.is_used ? (
+                        <span className="text-dark-muted text-xs">مستخدم</span>
+                      ) : (
+                        <span className="text-secondary text-xs">متاح</span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-dark-muted text-xs">{item.duration}</span>
-                    {item.used ? (
-                      <span className="text-dark-muted text-xs">استخدمه: {item.usedBy}</span>
-                    ) : (
-                      <span className="text-secondary text-xs">متاح</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-dark-muted">
+                <Key size={32} className="mx-auto mb-2 opacity-50" />
+                <p className="text-sm">لا توجد أكواد مفعّلة</p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -337,63 +395,40 @@ export default function AdminPanel() {
       {/* Security Tab */}
       {activeTab === 'security' && (
         <div className="space-y-6">
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="glass rounded-xl p-6">
-              <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-                <Shield size={18} className="text-primary-light" />
-                إعدادات الأمان
-              </h3>
-              <div className="space-y-4">
-                {[
-                  { label: 'التحقق من بصمة الجهاز', enabled: true },
-                  { label: 'تحديد محاولات الدخول الفاشلة', enabled: true },
-                  { label: 'إشعار عند دخول من جهاز جديد', enabled: false },
-                  { label: 'حظر IP تلقائي بعد 5 محاولات', enabled: true },
-                  { label: 'تسجيل جميع محاولات الدخول', enabled: true },
-                ].map((setting, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-dark-bg/50 border border-dark-border/50">
-                    <span className="text-white text-sm">{setting.label}</span>
-                    <div className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${
-                      setting.enabled ? 'bg-secondary' : 'bg-dark-border'
-                    }`}>
-                      <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${
-                        setting.enabled ? 'right-0.5' : 'right-5'
-                      }`} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="glass rounded-xl p-6">
-              <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-                <Eye size={18} className="text-accent" />
-                سجل النشاط
-              </h3>
+          <div className="glass rounded-xl p-6">
+            <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+              <Shield size={18} className="text-primary-light" />
+              سجل النشاط الأمني
+            </h3>
+            {securityLogs.length > 0 ? (
               <div className="space-y-3">
-                {[
-                  { action: 'تسجيل دخول ناجح', user: 'DragonSlayer', time: 'منذ 5 دقائق', type: 'success' },
-                  { action: 'محاولة دخول فاشلة', user: 'Unknown (ID: 99999)', time: 'منذ 12 دقيقة', type: 'danger' },
-                  { action: 'تفعيل حساب', user: 'FrostMage', time: 'منذ ساعة', type: 'info' },
-                  { action: 'إعادة توليد سيريال', user: 'StormBringer', time: 'منذ 3 ساعات', type: 'warning' },
-                  { action: 'حظر مستخدم', user: 'StormBringer', time: 'منذ يوم', type: 'danger' },
-                  { action: 'تسجيل دخول ناجح', user: 'ShadowKnight', time: 'منذ يوم', type: 'success' },
-                ].map((log, i) => (
-                  <div key={i} className="flex items-start gap-3 p-2 rounded-lg hover:bg-dark-bg/50 transition-colors">
+                {securityLogs.map((log) => (
+                  <div key={log.id} className="flex items-start gap-3 p-3 rounded-lg bg-dark-bg/50 border border-dark-border/50">
                     <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
-                      log.type === 'success' ? 'bg-secondary' :
-                      log.type === 'danger' ? 'bg-danger' :
-                      log.type === 'warning' ? 'bg-accent' :
-                      'bg-primary-light'
+                      log.action.includes('success') ? 'bg-secondary' :
+                      log.action.includes('failed') ? 'bg-danger' :
+                      log.action.includes('signup') ? 'bg-primary-light' :
+                      'bg-accent'
                     }`} />
                     <div className="flex-1">
                       <p className="text-white text-sm">{log.action}</p>
-                      <p className="text-dark-muted text-xs">{log.user} • {log.time}</p>
+                      <p className="text-dark-muted text-xs">
+                        {log.device_fingerprint && `جهاز: ${log.device_fingerprint}`}
+                        {log.ip_address && ` • IP: ${log.ip_address}`}
+                        {' • '}
+                        {new Date(log.created_at).toLocaleString('ar')}
+                      </p>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
+            ) : (
+              <div className="text-center py-8 text-dark-muted">
+                <Shield size={32} className="mx-auto mb-2 opacity-50" />
+                <p className="text-sm">لا توجد سجلات أمنية</p>
+                <p className="text-xs mt-1">ستظهر هنا عند تسجيل دخول المستخدمين</p>
+              </div>
+            )}
           </div>
         </div>
       )}
